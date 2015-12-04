@@ -32,18 +32,132 @@ class ViewController: NSViewController {
   var sortOrder = Directory.FileOrder.Name
   var sortAscending = true
   
+    @IBOutlet weak var tableView: NSTableView!
   override func viewDidLoad() {
     super.viewDidLoad()
     statusLabel.stringValue = ""
+    tableView.setDelegate(self)
+    tableView.setDataSource(self)
+    tableView.target = self
+    tableView.doubleAction = "tableViewDoubleClick:"
+    
+    // 1 create the descriptor
+    let descriptorName = NSSortDescriptor(key: Directory.FileOrder.Name.rawValue, ascending: true)
+    let descirptorDate = NSSortDescriptor(key: Directory.FileOrder.Date.rawValue, ascending: true)
+    let descriptorSize = NSSortDescriptor(key: Directory.FileOrder.Size.rawValue, ascending: true)
+    
+    // 2
+    tableView.tableColumns[0].sortDescriptorPrototype = descriptorName
+    tableView.tableColumns[1].sortDescriptorPrototype = descirptorDate
+    tableView.tableColumns[2].sortDescriptorPrototype = descriptorSize
   }
   
   override var representedObject: AnyObject? {
     didSet {
       if let url = representedObject as? NSURL {
-        print("Represented object: \(url)")
+        directory = Directory(folderURL: url)
+        reloadFileList()
         
       }
     }
   }
+    
+    func tableViewDoubleClick(sender: AnyObject) {
+        
+        // 1
+        guard tableView.selectedRow != 0, let item = directoryItems?[tableView.selectedRow] else {
+            return
+        }
+        
+        if item.isFolder {
+            // 2 refresh the items
+            self.representedObject = item.url
+        } else {
+            // 3
+            NSWorkspace.sharedWorkspace().openURL(item.url)
+        }
+    }
+    
+    func reloadFileList() {
+        directoryItems = directory?.contentsOrderedBy(sortOrder, ascending: sortAscending)
+        tableView.reloadData()
+    }
+    
+    func updateStatus() {
+        let text: String
+        // 1
+        let itemsSelected = tableView.selectedRowIndexes.count
+        
+        // 2
+        if itemsSelected == 0 {
+            text = "\(directoryItems!.count) items"
+        } else {
+            text = "\(itemsSelected) of \(directoryItems!.count) selected"
+        }
+        
+        // 3
+        statusLabel.stringValue = text
+    }
+    
 }
+
+extension ViewController: NSTableViewDataSource {
+    func numberOfRowsInTableView(tableView: NSTableView) -> Int {
+        return directoryItems?.count ?? 0
+    }
+    
+    func tableView(tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        // 1
+        guard let sortDescriptor = tableView.sortDescriptors.first else {
+            return
+        }
+        
+        if let order = Directory.FileOrder(rawValue: sortDescriptor.key!) {
+            // 2
+            sortOrder = order
+            sortAscending = sortDescriptor.ascending
+            reloadFileList()
+        }
+    }
+}
+
+extension ViewController : NSTableViewDelegate {
+    func tableView(tableView: NSTableView, viewForTableColumn tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        var image: NSImage?
+        var text: String = ""
+        var cellIdentifier: String = ""
+        
+        // 1
+        guard let item = directoryItems?[row] else {
+            return nil
+        }
+        
+        // 2
+        if tableColumn == tableView.tableColumns[0] {
+            image = item.icon
+            text = item.name
+            cellIdentifier = "NameCellID"
+        } else if tableColumn == tableView.tableColumns[1] {
+            text = item.date.description
+            cellIdentifier = "DateCellID"
+        } else if tableColumn == tableView.tableColumns[2] {
+            text = item.isFolder ? "--" : sizeFormatter.stringFromByteCount(item.size)
+            cellIdentifier = "SizeCellID"
+        }
+        
+        // 3
+        if let cell = tableView.makeViewWithIdentifier(cellIdentifier, owner: nil) as? NSTableCellView {
+            cell.textField?.stringValue = text
+            cell.imageView?.image = image ?? nil
+            return cell
+        }
+        return nil
+    }
+    
+    func tableViewSelectionDidChange(notification: NSNotification) {
+        updateStatus()
+    }
+}
+
+
 
